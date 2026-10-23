@@ -1,51 +1,60 @@
 import { WebSocketServer } from "ws";
-import {
-    createRoom,
-    createUser,
-    getRoomById,
-    getRoomByName,
-    getUserByEmail,
-    getUserByGuid,
-    getUsersByRoomId
-} from "./db_queries.js";
+// import {
+//     createRoom,
+//     createUser,
+//     getRoomById,
+//     getRoomByName,
+//     getUserByEmail,
+//     getUserByGuid,
+//     getUsersByRoomId
+// } from "./db_queries.js";
 
 const roomName = 'test-room';
+const users = new Set();
 
-let room = getRoomByName(roomName);
-if (!room) {
-    room = createRoom(roomName);
-}
-console.log(room);
+const wss = new WebSocketServer({ port: 3000 });
 
-let users = getUsersByRoomId(room.id);
-if (users.length === 0) {
-    const user = createUser(room.id, 'test@gmail.com');
-    users = getUsersByRoomId(room.id);
+function sendData(ws, data) {
+    ws.send(JSON.stringify(data));
 }
 
-console.log(users);
+wss.on('connection', (ws) => {
 
-// try {
-//     const user = createUser(12, randomUUID(), 'test+1@gmail.com');
-// } catch (ex) {
-//     console.log('NEE');
-// }
+    console.log('Client connected');
 
+    if (users.size >= 2) {
+        console.log('Room already full, closing client.');
+        ws.close(1013, 'full'); // 1013 = try again later...
+        return;
+    }
 
-// const wss = new WebSocketServer({ port: 3000 });
+    const polite = users.size === 1;
+    users.add(ws);
+    sendData(ws, { type: 'welcome', polite: polite });
+    console.log(`Welcome client ${polite ? 'polite' : 'impolite'}`);
 
-// wss.on('connection', (ws) => {
-//     console.log('Client connected');
+    if (users.size === 2) {
+        for (const peer of users) {
+            if (peer !== ws && peer.readyState === peer.OPEN) { // TODO: Is dit goed??? peer.OPEN???
+                // Now the first caller is told that the other peer is ready, so connection can start (offer etc.)
+                sendData(peer, { type: 'ready' });
+            }
+        }
+    }
 
-//     ws.on('message', (data) => {
-//         const message = data.toString();
-//         console.log(`Received: ${message}`);
-//         ws.send(`I have received: ${message}`);
-//     });
+    ws.on('message', (data, isBinary) => {
+        for (const peer of users) {
+            if (peer !== ws && peer.readyState === peer.OPEN) { // TODO: Is dit goed??? peer.OPEN???
+                peer.send(data, { binary: isBinary });
+            }
+        }
+    });
 
-//     ws.on('close', () => {
-//         console.log('Client closed');
-//     });
-// });
+    ws.on('close', () => {
+        users.delete(ws);
+        console.log('Client closed');
+    });
 
-// console.log('WebSocketServer running on port 3000...');
+});
+
+console.log('WebSocketServer running on port 3000...');
