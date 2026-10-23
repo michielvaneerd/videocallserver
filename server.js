@@ -1,19 +1,51 @@
 import { WebSocketServer } from "ws";
+import {
+    createRoom,
+    createUser,
+    getRoomById,
+    getRoomByName,
+    getUserByEmail,
+    getUserByGuid,
+    getUsersByRoomId
+} from "./db_queries.js";
 
-const wss = new WebSocketServer({ port: 3000 });
+const roomName = 'test-room';
 
-wss.on('connection', (ws) => {
-    console.log('Client connected');
+let room = getRoomByName(roomName);
+if (!room) {
+    room = createRoom(roomName);
+}
+console.log(room);
 
-    ws.on('message', (data) => {
-        const message = data.toString();
-        console.log(`Received: ${message}`);
-        ws.send(`I have received: ${message}`);
-    });
+let users = getUsersByRoomId(room.id);
+if (users.length === 0) {
+    const user = createUser(room.id, 'test@gmail.com');
+    users = getUsersByRoomId(room.id);
+}
 
-    ws.on('close', () => {
-        console.log('Client closed');
-    });
-});
+console.log(users);
 
-console.log('WebSocketServer running on port 3000...');
+// try {
+//     const user = createUser(12, randomUUID(), 'test+1@gmail.com');
+// } catch (ex) {
+//     console.log('NEE');
+// }
+
+
+// const wss = new WebSocketServer({ port: 3000 });
+
+// wss.on('connection', (ws) => {
+//     console.log('Client connected');
+
+//     ws.on('message', (data) => {
+//         const message = data.toString();
+//         console.log(`Received: ${message}`);
+//         ws.send(`I have received: ${message}`);
+//     });
+
+//     ws.on('close', () => {
+//         console.log('Client closed');
+//     });
+// });
+
+// console.log('WebSocketServer running on port 3000...');

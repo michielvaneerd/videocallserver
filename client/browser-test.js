@@ -1,4 +1,7 @@
-const ws = new WebSocket("ws://localhost:3000");
+// Note: on localhost you can use ws:// but otherwise you must use wss://
+
+//const ws = new WebSocket("ws://localhost:3000");
+const ws = new WebSocket("wss://server.michielvaneerd.nl/api");
 
 ws.onopen = () => {
     console.log("Connected");
