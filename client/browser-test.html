@@ -4,17 +4,18 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="./style.css">
 </head>
 
 <body>
-
-    <h2>Local video</h2>
-    <video id="localVideo" autoplay></video>
-    <button id="localCallButton">Call</button>
-
-    <h2>Remote video</h2>
-    <video id="remoteVideo" autoplay></video>
-    <button id="remoteCallButton">Answer</button>
+    <div id="video-container">
+        <video id="remote-video" autoplay></video>
+        <video id="local-video" autoplay></video>
+        <div id="toolbar">
+            <input type="text" id="pwd-input">
+            <button id="call-button">Call</button>
+        </div>
+    </div>
 
     <script src="./browser-test.js"></script>
 </body>

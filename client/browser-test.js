@@ -1,50 +1,46 @@
-// Note: on localhost you can use ws:// but otherwise you must use wss://
-
 //const url = "wss://server.michielvaneerd.nl/api";
 const url = "ws://localhost:3000";
 
 let webSocket = null;
-// //const ws = new WebSocket("wss://server.michielvaneerd.nl/api");
-
-// ws.onopen = () => {
-//     console.log("Connected");
-//     //ws.send("Hello from the browser");
-// };
-
-// ws.onmessage = (event) => {
-//     console.log("Server says:", event.data);
-// };
-
-// ws.onclose = () => {
-//     console.log("Disconnected");
-// };
 
 let isCalling = false;
-const localCallButton = document.getElementById('localCallButton');
-const localVideo = document.getElementById('localVideo');
-const remoteVideo = document.getElementById('remoteVideo');
+const callButton = document.getElementById('call-button');
+const pwdInput = document.getElementById('pwd-input');
+const localVideo = document.getElementById('local-video');
+const remoteVideo = document.getElementById('remote-video');
 
 let started = false;
-
+let pc = null;
 let polite = false;       // set from the server's "welcome"
 let makingOffer = false;
 let ignoreOffer = false;
 
-async function init() {
+async function init(pwd) {
+
+    // 1) Add the local stream to the local video, so we can see ourselves.
     const constraints = window.constraints = {
-        audio: false,
+        audio: true,
         video: true
     };
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    // const videoTracks = stream.getVideoTracks();
-    // console.log('Got stream with constraints:', constraints);
-    // console.log(`Using video device: ${videoTracks[0].label}`);
-    localVideo.srcObject = stream;
-    localCallButton.innerText = 'Close';
+    let stream = null;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (ex) {
+        alert(ex);
+        return;
+    }
 
-    const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    localVideo.srcObject = stream;
+    callButton.innerText = 'Close';
+
+    // 2) Create a RTCPeerConnection
+    pc = new RTCPeerConnection({
+        iceServers: [
+            { urls: "stun:stun.l.google.com:19302" }
+        ],
     });
+
+    // 3) Set up the events for the RTCPeerConnection
 
     // Remote media shows up here once the connection is live.
     pc.ontrack = ({ streams: [stream] }) => {
@@ -70,10 +66,16 @@ async function init() {
 
     isCalling = true;
     webSocket = new WebSocket(url);
+    webSocket.onopen = () => {
+        send({ type: 'auth', pwd: pwd });
+    };
     webSocket.onmessage = async (message) => {
         const data = JSON.parse(message.data);
 
         switch (data.type) {
+            case 'unauth':
+                alert('Wrong password!');
+                break;
             case 'welcome':
                 polite = data.polite;
                 if (polite) {
@@ -106,7 +108,6 @@ async function init() {
                 }
                 break;
         }
-        //console.log(data);
     };
     webSocket.onclose = () => {
         //close();
@@ -122,21 +123,28 @@ function start(pc, stream) {
 }
 
 function close() {
+    started = false;
+    pc.close();
     webSocket.close();
-    const stream = localVideo.srcObject;
-    const tracks = stream.getTracks();
-    tracks.forEach((track) => {
-        track.stop();
-    });
-    localVideo.srcObject = null;
-    localCallButton.innerText = 'Call';
+    for (const video of [localVideo, remoteVideo]) {
+        const stream = video.srcObject;
+        if (stream) {
+            const tracks = stream.getTracks();
+            tracks.forEach((track) => {
+                track.stop();
+            });
+        }
+        video.srcObject = null;
+    }
+    callButton.innerText = 'Call';
     isCalling = false;
+    ignoreOffer = false;
 }
 
-localCallButton.addEventListener('click', function (e) {
+callButton.addEventListener('click', function (e) {
     if (isCalling) {
         close();
     } else {
-        init();
+        init(pwdInput.value);
     }
 });
