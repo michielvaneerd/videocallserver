@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 //     getUsersByRoomId
 // } from "./db_queries.js";
 
-const pwd = readFileSync('.env', { encoding: 'utf-8' });
+const pwd = readFileSync('.env', { encoding: 'utf-8' }).trim();
 
 // We only have 1 room with 2 users maximum.
 const users = new Set();
@@ -59,9 +59,11 @@ wss.on('connection', (ws) => {
         if (!isAuthenticated && obData.type === 'auth' && obData.pwd === pwd) {
             isAuthenticated = true;
             start(ws);
+            return;
         }
         if (!isAuthenticated) {
             ws.send(JSON.stringify({ type: 'unauth' }));
+            ws.close();
             return;
         }
 

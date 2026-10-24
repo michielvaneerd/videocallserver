@@ -9,56 +9,83 @@ const pwdInput = document.getElementById('pwd-input');
 const localVideo = document.getElementById('local-video');
 const remoteVideo = document.getElementById('remote-video');
 
-let started = false;
-let pc = null;
-let polite = false;       // set from the server's "welcome"
+//let started = false;
+let peerConnection = null;
+let polite = false;
 let makingOffer = false;
 let ignoreOffer = false;
+let stream = null;
+let isSettingRemoteAnswerPending = false;
 
+function reset() {
+    peerConnection = null;
+    polite = false;
+    makingOffer = false;
+    ignoreOffer = false;
+    stream = null;
+    isSettingRemoteAnswerPending = false;
+}
+
+// Called after clicking on the button
 async function init(pwd) {
 
-    // 1) Add the local stream to the local video, so we can see ourselves.
-    const constraints = window.constraints = {
-        audio: true,
-        video: true
-    };
-    let stream = null;
-    try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-    } catch (ex) {
-        alert(ex);
-        return;
-    }
-
-    localVideo.srcObject = stream;
     callButton.innerText = 'Close';
 
     // 2) Create a RTCPeerConnection
-    pc = new RTCPeerConnection({
+    peerConnection = new RTCPeerConnection({
         iceServers: [
             { urls: "stun:stun.l.google.com:19302" }
         ],
     });
 
-    // 3) Set up the events for the RTCPeerConnection
+    console.log('new peerConnection created', peerConnection);
+    window.myPeerConnection = peerConnection;
 
-    // Remote media shows up here once the connection is live.
-    pc.ontrack = ({ streams: [stream] }) => {
-        remoteVideo.srcObject = stream;
+    try {
+        stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+            video: true
+        });
+    } catch (ex) {
+        alert(ex);
+        return;
+    }
+
+    //for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
+    localVideo.srcObject = stream;
+
+    // 3) Set up the events for the RTCPeerConnection
+    peerConnection.ontrack = ({ track, streams }) => {
+        track.onunmute = () => {
+            if (remoteVideo.srcObject) {
+                return;
+            }
+            remoteVideo.srcObject = streams[0];
+        };
     };
 
+    // Remote media shows up here once the connection is live.
+    // peerConnection.ontrack = ({ streams: [stream] }) => {
+    //     remoteVideo.srcObject = stream;
+    // };
+
     // Trickle ICE: send each local candidate over the relay as we discover it.
-    pc.onicecandidate = ({ candidate }) => {
-        if (candidate) send({ type: "ice", candidate });
+    // Deze peer krijgt van het WebRCT een nieuwe iceCandidate en moet deze naar de andeer peer sturen.
+    peerConnection.onicecandidate = ({ candidate }) => {
+        //if (candidate) send({ type: "ice", candidate });
+        send({ type: "ice", candidate });
     };
 
     // Whenever we need to (re)negotiate, make an offer. The "polite" peer backs off
     // if both sides offer at once, so this same handler is safe in both tabs.
-    pc.onnegotiationneeded = async () => {
+    peerConnection.onnegotiationneeded = async () => {
         try {
             makingOffer = true;
-            await pc.setLocalDescription();                    // implicit createOffer()
-            send({ type: "description", description: pc.localDescription });
+            // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation ==> inderdaad implicit offer/answer
+            await peerConnection.setLocalDescription();                    // implicit createOffer()
+            send({ type: "description", description: peerConnection.localDescription });
+        } catch (err) {
+            console.error(err);
         } finally {
             makingOffer = false;
         }
@@ -71,7 +98,7 @@ async function init(pwd) {
     };
     webSocket.onmessage = async (message) => {
         const data = JSON.parse(message.data);
-
+        console.log(data.type);
         switch (data.type) {
             case 'unauth':
                 alert('Wrong password!');
@@ -80,32 +107,49 @@ async function init(pwd) {
                 polite = data.polite;
                 if (polite) {
                     // We are the second one, so we can start here.
-                    start(pc, stream);
+                    start();
                 }
                 break;
             case 'ready':
                 // We only get this if we are the impolite/first after the second has joined, so we can start here
-                start(pc, stream);
+                start();
                 break;
             case 'ice':
                 try {
-                    await pc.addIceCandidate(data.candidate);
+                    await peerConnection.addIceCandidate(data.candidate);
                 } catch (err) {
                     if (!ignoreOffer) throw err;                     // candidates for an ignored offer are expected to fail
                 }
                 break;
             case 'description':
                 const description = data.description;
-                const offerCollision =
-                    description.type === "offer" &&
-                    (makingOffer || pc.signalingState !== "stable");
-                ignoreOffer = !polite && offerCollision;           // impolite peer ignores the colliding offer
-                if (ignoreOffer) return;
-                await pc.setRemoteDescription(description);
-                if (description.type === "offer") {
-                    await pc.setLocalDescription();                  // implicit createAnswer()
-                    send({ type: "description", description: pc.localDescription });
+                const readyForOffer =
+                    !makingOffer &&
+                    (peerConnection.signalingState === "stable" || isSettingRemoteAnswerPending);
+                const offerCollision = description.type === "offer" && !readyForOffer;
+                ignoreOffer = !polite && offerCollision;
+                if (ignoreOffer) {
+                    return;
                 }
+                isSettingRemoteAnswerPending = description.type === "answer";
+                await peerConnection.setRemoteDescription(description);
+                isSettingRemoteAnswerPending = false;
+                if (description.type === "offer") {
+                    await peerConnection.setLocalDescription();
+                    send({ type: "description", description: peerConnection.localDescription });
+                }
+
+                // const description = data.description;
+                // const offerCollision =
+                //     description.type === "offer" &&
+                //     (makingOffer || peerConnection.signalingState !== "stable");
+                // ignoreOffer = !polite && offerCollision;           // impolite peer ignores the colliding offer
+                // if (ignoreOffer) return;
+                // await peerConnection.setRemoteDescription(description);
+                // if (description.type === "offer") {
+                //     await peerConnection.setLocalDescription();                  // implicit createAnswer()
+                //     send({ type: "description", description: peerConnection.localDescription });
+                // }
                 break;
         }
     };
@@ -116,15 +160,29 @@ async function init(pwd) {
 
 const send = (msg) => webSocket.send(JSON.stringify(msg));
 
-function start(pc, stream) {
-    if (started) return;
-    started = true;
-    for (const track of stream.getTracks()) pc.addTrack(track, stream);
+async function start() {
+    console.log('In start!');
+    // if (started) return;
+    // started = true;
+    // try {
+    //     stream = await navigator.mediaDevices.getUserMedia({
+    //         audio: true,
+    //         video: true
+    //     });
+    // } catch (ex) {
+    //     alert(ex);
+    //     return;
+    // }
+    for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
+    //localVideo.srcObject = stream;
 }
 
 function close() {
-    started = false;
-    pc.close();
+    if (peerConnection != null) {
+        peerConnection.close();
+        peerConnection = null;
+        window.myPeerConnection = null;
+    }
     webSocket.close();
     for (const video of [localVideo, remoteVideo]) {
         const stream = video.srcObject;
