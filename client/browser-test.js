@@ -8,6 +8,7 @@ const callButton = document.getElementById('call-button');
 const pwdInput = document.getElementById('pwd-input');
 const localVideo = document.getElementById('local-video');
 const remoteVideo = document.getElementById('remote-video');
+const statusLabel = document.getElementById('status-label');
 
 //let started = false;
 let peerConnection = null;
@@ -24,6 +25,10 @@ function reset() {
     ignoreOffer = false;
     stream = null;
     isSettingRemoteAnswerPending = false;
+    window.myPeerConnection = null;
+    callButton.innerText = 'Call';
+    isCalling = false;
+    ignoreOffer = false;
 }
 
 // Called after clicking on the button
@@ -31,16 +36,9 @@ async function init(pwd) {
 
     callButton.innerText = 'Close';
 
-    // 2) Create a RTCPeerConnection
-    peerConnection = new RTCPeerConnection({
-        iceServers: [
-            { urls: "stun:stun.l.google.com:19302" }
-        ],
-    });
+    // navigator.mediaDevices.ondevicechange => kan ook nog als men later een webcam inplugt bijv.
 
-    console.log('new peerConnection created', peerConnection);
-    window.myPeerConnection = peerConnection;
-
+    // Onze eigen media stream koppelen.
     try {
         stream = await navigator.mediaDevices.getUserMedia({
             audio: true,
@@ -48,57 +46,88 @@ async function init(pwd) {
         });
     } catch (ex) {
         alert(ex);
+        statusLabel.innerText = ex.toString();
+        reset();
         return;
     }
-
-    //for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
     localVideo.srcObject = stream;
-
-    // 3) Set up the events for the RTCPeerConnection
-    peerConnection.ontrack = ({ track, streams }) => {
-        track.onunmute = () => {
-            if (remoteVideo.srcObject) {
-                return;
-            }
-            remoteVideo.srcObject = streams[0];
-        };
-    };
-
-    // Remote media shows up here once the connection is live.
-    // peerConnection.ontrack = ({ streams: [stream] }) => {
-    //     remoteVideo.srcObject = stream;
-    // };
-
-    // Trickle ICE: send each local candidate over the relay as we discover it.
-    // Deze peer krijgt van het WebRCT een nieuwe iceCandidate en moet deze naar de andeer peer sturen.
-    peerConnection.onicecandidate = ({ candidate }) => {
-        //if (candidate) send({ type: "ice", candidate });
-        send({ type: "ice", candidate });
-    };
-
-    // Whenever we need to (re)negotiate, make an offer. The "polite" peer backs off
-    // if both sides offer at once, so this same handler is safe in both tabs.
-    peerConnection.onnegotiationneeded = async () => {
-        try {
-            makingOffer = true;
-            // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation ==> inderdaad implicit offer/answer
-            await peerConnection.setLocalDescription();                    // implicit createOffer()
-            send({ type: "description", description: peerConnection.localDescription });
-        } catch (err) {
-            console.error(err);
-        } finally {
-            makingOffer = false;
-        }
-    };
 
     isCalling = true;
     webSocket = new WebSocket(url);
+
     webSocket.onopen = () => {
+        console.log('Send password');
+        // Hier kunnen we pas send()doen, dus ook hier pas de peerconnection opzetten!
+
+        // PeerConnection opzetten
+        // 2) Create a RTCPeerConnection
+        peerConnection = new RTCPeerConnection({
+            iceServers: [
+                { urls: "stun:stun.l.google.com:19302" }
+            ],
+        });
+        // Kan nu al...
+        //for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
+
+        console.log('new peerConnection created', peerConnection);
+        window.myPeerConnection = peerConnection;
+
+        // 3) Set up the events for the RTCPeerConnection
+        // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
+        // peerConnection.ontrack = ({ track, streams }) => {
+        //     track.onunmute = () => {
+        //         if (remoteVideo.srcObject) {
+        //             return;
+        //         }
+        //         remoteVideo.srcObject = streams[0];
+        //     };
+        // };
+
+        // Remote media shows up here once the connection is live.
+        // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
+        peerConnection.ontrack = ({ streams: [stream] }) => {
+            console.log(`ontrack event`);
+            remoteVideo.srcObject = stream;
+        };
+
+        // Trickle ICE: send each local candidate over the relay as we discover it.
+        // Deze peer krijgt van het WebRCT een nieuwe iceCandidate en moet deze naar de andeer peer sturen.
+        peerConnection.onicecandidate = ({ candidate }) => {
+            //if (candidate) send({ type: "ice", candidate });
+            console.log(`onicecandidate = ${candidate}`);
+            send({ type: "ice", candidate });
+        };
+
+        peerConnection.onconnectionstatechange = (e) => {
+            console.log(`connectionState = ${peerConnection.connectionState}`);
+            statusLabel.innerText = peerConnection.connectionState;
+        };
+
+        peerConnection.onsignalingstatechange = (e) => {
+            console.log(`signalingState = ${peerConnection.signalingState}`);
+        };
+
+        // Whenever we need to (re)negotiate, make an offer. The "polite" peer backs off
+        // if both sides offer at once, so this same handler is safe in both tabs.
+        peerConnection.onnegotiationneeded = async () => {
+            console.log(`onnegotiationneeded`);
+            try {
+                makingOffer = true;
+                // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation ==> inderdaad implicit offer/answer
+                await peerConnection.setLocalDescription();                    // implicit createOffer()
+                send({ type: "description", description: peerConnection.localDescription });
+            } catch (err) {
+                console.error(err);
+            } finally {
+                makingOffer = false;
+            }
+        };
+
         send({ type: 'auth', pwd: pwd });
     };
     webSocket.onmessage = async (message) => {
         const data = JSON.parse(message.data);
-        console.log(data.type);
+        console.log(`onmessage for ${data.type}`);
         switch (data.type) {
             case 'unauth':
                 alert('Wrong password!');
@@ -161,27 +190,13 @@ async function init(pwd) {
 const send = (msg) => webSocket.send(JSON.stringify(msg));
 
 async function start() {
-    console.log('In start!');
-    // if (started) return;
-    // started = true;
-    // try {
-    //     stream = await navigator.mediaDevices.getUserMedia({
-    //         audio: true,
-    //         video: true
-    //     });
-    // } catch (ex) {
-    //     alert(ex);
-    //     return;
-    // }
+    console.log('start()');
     for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
-    //localVideo.srcObject = stream;
 }
 
 function close() {
     if (peerConnection != null) {
         peerConnection.close();
-        peerConnection = null;
-        window.myPeerConnection = null;
     }
     webSocket.close();
     for (const video of [localVideo, remoteVideo]) {
@@ -194,9 +209,7 @@ function close() {
         }
         video.srcObject = null;
     }
-    callButton.innerText = 'Call';
-    isCalling = false;
-    ignoreOffer = false;
+    reset();
 }
 
 callButton.addEventListener('click', function (e) {
