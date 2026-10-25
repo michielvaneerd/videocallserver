@@ -1,5 +1,6 @@
-//const url = "wss://server.michielvaneerd.nl/api";
-const url = "ws://localhost:3000";
+const url = window.location.hostname === 'localhost'
+    ? "ws://localhost:3000"
+    : "wss://server.michielvaneerd.nl/api";
 
 let webSocket = null;
 
@@ -204,7 +205,7 @@ async function init(pwd) {
         }
     };
     webSocket.onclose = () => {
-        //close();
+        close();
     };
 }
 
@@ -219,7 +220,9 @@ function close() {
     if (peerConnection != null) {
         peerConnection.close();
     }
-    webSocket.close();
+    if (webSocket !== null) {
+        webSocket.close();
+    }
     for (const video of [localVideo, remoteVideo]) {
         const stream = video.srcObject;
         if (stream) {
