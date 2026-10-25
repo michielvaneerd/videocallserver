@@ -71,76 +71,90 @@ async function init(pwd) {
 
         pingInterval = setInterval(ping, 5000);
 
-        // PeerConnection opzetten
-        // 2) Create a RTCPeerConnection
-        peerConnection = new RTCPeerConnection({
-            iceServers: [
-                { urls: "stun:stun.l.google.com:19302" }
-            ],
-        });
-        // Kan nu al...
-        //for (const track of stream.getTracks()) peerConnection.addTrack(track, stream);
-
-        console.log('new peerConnection created', peerConnection);
-        window.myPeerConnection = peerConnection;
-
-        // 3) Set up the events for the RTCPeerConnection
-        // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
-        // peerConnection.ontrack = ({ track, streams }) => {
-        //     track.onunmute = () => {
-        //         if (remoteVideo.srcObject) {
-        //             return;
-        //         }
-        //         remoteVideo.srcObject = streams[0];
-        //     };
-        // };
-
-        // Remote media shows up here once the connection is live.
-        // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
-        peerConnection.ontrack = ({ streams: [stream] }) => {
-            console.log(`ontrack event`);
-            remoteVideo.srcObject = stream;
-        };
-
-        // Trickle ICE: send each local candidate over the relay as we discover it.
-        // Deze peer krijgt van het WebRCT een nieuwe iceCandidate en moet deze naar de andeer peer sturen.
-        peerConnection.onicecandidate = ({ candidate }) => {
-            //if (candidate) send({ type: "ice", candidate });
-            console.log(`onicecandidate = ${candidate}`);
-            send({ type: "ice", candidate });
-        };
-
-        peerConnection.onconnectionstatechange = (e) => {
-            console.log(`connectionState = ${peerConnection.connectionState}`);
-            statusLabel.innerText = peerConnection.connectionState;
-        };
-
-        peerConnection.onsignalingstatechange = (e) => {
-            console.log(`signalingState = ${peerConnection.signalingState}`);
-        };
-
-        // Whenever we need to (re)negotiate, make an offer. The "polite" peer backs off
-        // if both sides offer at once, so this same handler is safe in both tabs.
-        peerConnection.onnegotiationneeded = async () => {
-            console.log(`onnegotiationneeded`);
-            try {
-                makingOffer = true;
-                // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation ==> inderdaad implicit offer/answer
-                await peerConnection.setLocalDescription();                    // implicit createOffer()
-                send({ type: "description", description: peerConnection.localDescription });
-            } catch (err) {
-                console.error(err);
-            } finally {
-                makingOffer = false;
-            }
-        };
-
         send({ type: 'auth', pwd: pwd });
     };
     webSocket.onmessage = async (message) => {
         const data = JSON.parse(message.data);
         console.log(`onmessage for ${data.type}`);
         switch (data.type) {
+            case 'iceServers':
+                // We get them after authenticating, now we have everything to create the RTCPeerConnection
+
+                console.log(`Reveived iceServers!`);
+                console.log(data.value);
+
+                // PeerConnection opzetten
+                // 2) Create a RTCPeerConnection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: data.value,
+                });
+
+                console.log('new peerConnection created', peerConnection);
+                window.myPeerConnection = peerConnection;
+
+                // 3) Set up the events for the RTCPeerConnection
+                // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
+                // peerConnection.ontrack = ({ track, streams }) => {
+                //     track.onunmute = () => {
+                //         if (remoteVideo.srcObject) {
+                //             return;
+                //         }
+                //         remoteVideo.srcObject = streams[0];
+                //     };
+                // };
+
+                // Remote media shows up here once the connection is live.
+                // Dus we krijgen de media tracks van de remote peer en deze koppelen we aan de remoteVideo element, zoadt we de ander kunnen zien en horen.
+                peerConnection.ontrack = ({ streams: [stream] }) => {
+                    console.log(`ontrack event`);
+                    remoteVideo.srcObject = stream;
+                };
+
+                // Trickle ICE: send each local candidate over the relay as we discover it.
+                // Deze peer krijgt van het WebRCT een nieuwe iceCandidate en moet deze naar de andeer peer sturen.
+                peerConnection.onicecandidate = ({ candidate }) => {
+                    //if (candidate) send({ type: "ice", candidate });
+                    console.log(`onicecandidate = ${candidate}`);
+                    send({ type: "ice", candidate });
+                };
+
+                peerConnection.onconnectionstatechange = (e) => {
+                    console.log(`connectionState = ${peerConnection.connectionState}`);
+                    statusLabel.innerText = peerConnection.connectionState;
+                };
+
+                peerConnection.onsignalingstatechange = (e) => {
+                    console.log(`signalingState = ${peerConnection.signalingState}`);
+                };
+
+                peerConnection.oniceconnectionstatechange = (e) => {
+                    console.log(`iceConnectionState = ${peerConnection.iceConnectionState}`);
+                    // Not sure if this is correct (polite/impolite).
+                    // if (peerConnection.iceConnectionState === 'failed') {
+                    //     peerConnection.restartIce();
+                    //     peerConnection.createOffer({ iceRestart: true })
+                    //         .then(offer => peerConnection.setLocalDescription(offer))
+                    //         .then(() => sendOffer(peerConnection.localDescription));
+                    // }
+                };
+
+                // Whenever we need to (re)negotiate, make an offer. The "polite" peer backs off
+                // if both sides offer at once, so this same handler is safe in both tabs.
+                peerConnection.onnegotiationneeded = async () => {
+                    console.log(`onnegotiationneeded`);
+                    try {
+                        makingOffer = true;
+                        // https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API/Perfect_negotiation ==> inderdaad implicit offer/answer
+                        await peerConnection.setLocalDescription();                    // implicit createOffer()
+                        send({ type: "description", description: peerConnection.localDescription });
+                    } catch (err) {
+                        console.error(err);
+                    } finally {
+                        makingOffer = false;
+                    }
+                };
+
+                break;
             case 'pong':
                 break;
             case 'hangup':

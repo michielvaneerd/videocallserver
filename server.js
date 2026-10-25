@@ -1,5 +1,4 @@
 import { WebSocketServer } from "ws";
-import { readFileSync } from 'node:fs';
 // import {
 //     createRoom,
 //     createUser,
@@ -10,7 +9,9 @@ import { readFileSync } from 'node:fs';
 //     getUsersByRoomId
 // } from "./db_queries.js";
 
-const pwd = readFileSync('.env', { encoding: 'utf-8' }).trim();
+process.loadEnvFile();
+
+const pwd = process.env.MY_PWD;
 
 // We only have 1 room with 2 users maximum.
 const users = new Set();
@@ -58,6 +59,34 @@ wss.on('connection', (ws) => {
         // The first message we must get is the auth call. Otherwise we won't handle any other message.
         if (!isAuthenticated && obData.type === 'auth' && obData.pwd === pwd) {
             isAuthenticated = true;
+            ws.send(JSON.stringify({
+                type: 'iceServers',
+                value: [
+                    {
+                        urls: process.env.STUN_SERVER
+                    },
+                    {
+                        urls: process.env.TURN_SERVER_1,
+                        username: process.env.TURN_USERNAME,
+                        credential: process.env.TURN_PWD
+                    },
+                    {
+                        urls: process.env.TURN_SERVER_2,
+                        username: process.env.TURN_USERNAME,
+                        credential: process.env.TURN_PWD
+                    },
+                    {
+                        urls: process.env.TURN_SERVER_3,
+                        username: process.env.TURN_USERNAME,
+                        credential: process.env.TURN_PWD
+                    },
+                    {
+                        urls: process.env.TURN_SERVER_4,
+                        username: process.env.TURN_USERNAME,
+                        credential: process.env.TURN_PWD
+                    },
+                ]
+            }));
             start(ws);
             return;
         }
