@@ -13,9 +13,10 @@
     width: 100%;
     height: 100%;
     position: absolute;
+    background-color: aliceblue;
 }
 
-#local-video {
+#local-video-container {
     width: 20%;
     height: 20%;
     position: absolute;
@@ -24,11 +25,27 @@
     background-color: antiquewhite;
 }
 
+#remote-label {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+}
+
+#local-label {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+}
+
 #toolbar {
     position: absolute;
     right: 1rem;
     top: 1rem;
-    padding: 1rem;
+}
+
+#status-label {
+    text-align: end;
+    margin-bottom: .4rem;
 }
 
 #call-button,

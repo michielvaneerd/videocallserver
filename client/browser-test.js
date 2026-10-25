@@ -17,6 +17,7 @@ let makingOffer = false;
 let ignoreOffer = false;
 let stream = null;
 let isSettingRemoteAnswerPending = false;
+let pingInterval = null;
 
 function reset() {
     peerConnection = null;
@@ -27,14 +28,22 @@ function reset() {
     isSettingRemoteAnswerPending = false;
     window.myPeerConnection = null;
     callButton.innerText = 'Call';
+    statusLabel.innerText = 'Closed';
     isCalling = false;
     ignoreOffer = false;
+    webSocket = null;
+    pingInterval = null;
+}
+
+function ping() {
+    send({ type: 'ping' });
 }
 
 // Called after clicking on the button
 async function init(pwd) {
 
     callButton.innerText = 'Close';
+    statusLabel.innerText = 'Waiting for guest...';
 
     // navigator.mediaDevices.ondevicechange => kan ook nog als men later een webcam inplugt bijv.
 
@@ -46,8 +55,8 @@ async function init(pwd) {
         });
     } catch (ex) {
         alert(ex);
-        statusLabel.innerText = ex.toString();
-        reset();
+        console.error(ex);
+        close();
         return;
     }
     localVideo.srcObject = stream;
@@ -58,6 +67,8 @@ async function init(pwd) {
     webSocket.onopen = () => {
         console.log('Send password');
         // Hier kunnen we pas send()doen, dus ook hier pas de peerconnection opzetten!
+
+        pingInterval = setInterval(ping, 5000);
 
         // PeerConnection opzetten
         // 2) Create a RTCPeerConnection
@@ -129,6 +140,13 @@ async function init(pwd) {
         const data = JSON.parse(message.data);
         console.log(`onmessage for ${data.type}`);
         switch (data.type) {
+            case 'pong':
+                break;
+            case 'hangup':
+                // Peer has hangup, so close all peer things.
+                remoteVideo.srcObject = null;
+                statusLabel.innerText = 'Guest has hangup';
+                break;
             case 'unauth':
                 alert('Wrong password!');
                 break;
@@ -180,6 +198,9 @@ async function init(pwd) {
                 //     send({ type: "description", description: peerConnection.localDescription });
                 // }
                 break;
+            default:
+                console.log(`Unknown message!`, data);
+                break;
         }
     };
     webSocket.onclose = () => {
@@ -209,11 +230,15 @@ function close() {
         }
         video.srcObject = null;
     }
+    if (pingInterval) {
+        clearInterval(pingInterval);
+    }
     reset();
 }
 
 callButton.addEventListener('click', function (e) {
     if (isCalling) {
+        send({ type: 'hangup' });
         close();
     } else {
         init(pwdInput.value);

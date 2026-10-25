@@ -10,10 +10,15 @@
 <body>
     <div id="video-container">
         <video id="remote-video" autoplay></video>
-        <video id="local-video" autoplay></video>
+        <div id="remote-label">Guest</div>
+        <div id="local-video-container">
+            <video id="local-video" autoplay></video>
+            <div id="local-label">Me</div>
+        </div>
+
         <div id="toolbar">
-            <span id="status-label">Status</span>
-            <input type="text" id="pwd-input">
+            <div id="status-label">Status</div>
+            <input type="text" id="pwd-input" placeholder="Password">
             <button id="call-button">Call</button>
         </div>
     </div>

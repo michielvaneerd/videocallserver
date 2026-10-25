@@ -67,6 +67,16 @@ wss.on('connection', (ws) => {
             return;
         }
 
+        if (obData.type === 'ping') {
+            ws.send(JSON.stringify({ type: 'pong' }));
+            return;
+        }
+
+        // if (obData.type === 'hangup') {
+        //     // Close event will come next, just inform the other one
+        //     return;
+        // }
+
         for (const peer of users) {
             if (peer !== ws && peer.readyState === peer.OPEN) {
                 peer.send(data, { binary: isBinary });
